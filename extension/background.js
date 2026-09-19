@@ -3,6 +3,9 @@
 
 const STORAGE_KEY_ACTIVE = "activeSession";
 const STORAGE_KEY_SESSIONS = "sessions";
+const HOURLY_ALARM = "hourlyCheck";
+const HOURLY_NOTIFICATION = "hourlyCheckNotification";
+const HOUR_MS = 60 * 60 * 1000;
 
 function now() {
   return Date.now();
@@ -33,6 +36,20 @@ function computeElapsedMs(session) {
   return base;
 }
 
+// Programa el próximo aviso para cuando se cumpla la siguiente hora de
+// tiempo TRABAJADO (no de reloj): si el ticket estuvo en pausa, esas
+// pausas no cuentan para el aviso.
+async function scheduleHourlyAlarm(session) {
+  if (!session || session.status !== "running") return;
+  const elapsed = computeElapsedMs(session);
+  const msToNext = HOUR_MS - (elapsed % HOUR_MS);
+  chrome.alarms.create(HOURLY_ALARM, { delayInMinutes: msToNext / 60000 });
+}
+
+async function clearHourlyAlarm() {
+  await chrome.alarms.clear(HOURLY_ALARM);
+}
+
 async function startSession(ticketCode, ticketDesc) {
   const existing = await getActiveSession();
   if (existing) {
@@ -48,6 +65,7 @@ async function startSession(ticketCode, ticketDesc) {
     accumulatedMs: 0,
   };
   await setActiveSession(session);
+  await scheduleHourlyAlarm(session);
   return session;
 }
 
@@ -58,6 +76,7 @@ async function pauseSession() {
   session.status = "paused";
   session.lastResumeAt = null;
   await setActiveSession(session);
+  await clearHourlyAlarm();
   return session;
 }
 
@@ -67,6 +86,7 @@ async function resumeSession() {
   session.status = "running";
   session.lastResumeAt = now();
   await setActiveSession(session);
+  await scheduleHourlyAlarm(session);
   return session;
 }
 
@@ -93,6 +113,8 @@ async function stopSession() {
   };
   await appendCompletedSession(completed);
   await setActiveSession(null);
+  await clearHourlyAlarm();
+  await chrome.notifications.clear(HOURLY_NOTIFICATION);
   return completed;
 }
 
@@ -138,4 +160,60 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
   })();
   return true; // respuesta asíncrona
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== HOURLY_ALARM) return;
+  (async () => {
+    const session = await getActiveSession();
+    if (!session || session.status !== "running") return;
+
+    chrome.notifications.create(HOURLY_NOTIFICATION, {
+      type: "basic",
+      iconUrl: "icons/icon128.png",
+      title: `¿Sigues trabajando en ${session.ticketCode}?`,
+      message: session.ticketDesc
+        ? `Llevas ${Math.round(computeElapsedMs(session) / HOUR_MS)} hora(s) en: ${session.ticketDesc}`
+        : "Llevas una hora registrada en este ticket.",
+      priority: 2,
+      requireInteraction: true,
+      buttons: [{ title: "Sí, continuar" }, { title: "No, cambiar de ticket" }],
+    });
+
+    // El aviso ya se mostró; programa el siguiente en una hora de trabajo más.
+    await scheduleHourlyAlarm(session);
+  })();
+});
+
+chrome.notifications.onButtonClicked.addListener((notificationId, buttonIndex) => {
+  if (notificationId !== HOURLY_NOTIFICATION) return;
+  (async () => {
+    chrome.notifications.clear(HOURLY_NOTIFICATION);
+
+    if (buttonIndex === 0) {
+      // "Sí, continuar": no se hace nada, el cronómetro sigue.
+      return;
+    }
+
+    // "No, cambiar de ticket": se cierra y guarda la sesión actual.
+    await stopSession();
+
+    try {
+      await chrome.action.openPopup();
+    } catch (_err) {
+      chrome.notifications.create(`${HOURLY_NOTIFICATION}-saved`, {
+        type: "basic",
+        iconUrl: "icons/icon128.png",
+        title: "Sesión guardada",
+        message: "Abre la extensión para iniciar el siguiente ticket.",
+        priority: 1,
+      });
+    }
+  })();
+});
+
+chrome.notifications.onClicked.addListener((notificationId) => {
+  if (notificationId === HOURLY_NOTIFICATION) {
+    chrome.notifications.clear(HOURLY_NOTIFICATION);
+  }
 });

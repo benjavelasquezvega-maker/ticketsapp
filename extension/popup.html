@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SAP Ticket Time Tracker</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Control de tiempo SAP</h1>
+    </header>
+
+    <main>
+      <div id="form-section">
+        <label for="ticket-code">Código de ticket</label>
+        <input
+          id="ticket-code"
+          type="text"
+          placeholder="Ej: INC0012345"
+          autocomplete="off"
+        />
+
+        <label for="ticket-desc">Descripción</label>
+        <input
+          id="ticket-desc"
+          type="text"
+          placeholder="Ej: Error en reporte de inventario"
+          autocomplete="off"
+        />
+
+        <button id="btn-start" class="primary">Iniciar</button>
+        <p id="form-error" class="error"></p>
+      </div>
+
+      <div id="active-section" class="hidden">
+        <div class="active-ticket">
+          <span id="active-code" class="ticket-code"></span>
+          <span id="active-desc" class="ticket-desc"></span>
+        </div>
+
+        <div id="timer" class="timer">00:00:00</div>
+        <div id="status-badge" class="status-badge"></div>
+
+        <div class="button-row">
+          <button id="btn-pause">Pausar</button>
+          <button id="btn-resume" class="hidden">Reanudar</button>
+          <button id="btn-stop" class="danger">Detener</button>
+        </div>
+
+        <label for="comment">Comentarios de esta sesión</label>
+        <textarea
+          id="comment"
+          rows="4"
+          placeholder="¿Qué hiciste en esta sesión?"
+        ></textarea>
+      </div>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

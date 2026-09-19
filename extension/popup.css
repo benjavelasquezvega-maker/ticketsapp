@@ -1,0 +1,145 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 300px;
+  margin: 0;
+  font-family: "Segoe UI", Arial, sans-serif;
+  color: #1a1a1a;
+  background: #f5f7fa;
+}
+
+header {
+  background: #005a9c;
+  color: #fff;
+  padding: 12px 16px;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+main {
+  padding: 16px;
+}
+
+label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: #444;
+}
+
+input[type="text"],
+textarea {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 12px;
+  border: 1px solid #ccd3da;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 4px;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+button.primary {
+  width: 100%;
+  background: #005a9c;
+  color: #fff;
+}
+
+button.primary:hover {
+  background: #00457a;
+}
+
+button.danger {
+  background: #c0392b;
+  color: #fff;
+}
+
+button.danger:hover {
+  background: #992d22;
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.button-row button {
+  flex: 1;
+}
+
+#btn-pause,
+#btn-resume {
+  background: #e8edf2;
+  color: #1a1a1a;
+}
+
+#btn-pause:hover,
+#btn-resume:hover {
+  background: #d7dee6;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.error {
+  color: #c0392b;
+  font-size: 12px;
+  min-height: 14px;
+  margin: 4px 0 0;
+}
+
+.active-ticket {
+  margin-bottom: 8px;
+}
+
+.active-ticket .ticket-code {
+  font-weight: 700;
+  font-size: 15px;
+  display: block;
+}
+
+.active-ticket .ticket-desc {
+  font-size: 12px;
+  color: #555;
+}
+
+.timer {
+  font-size: 32px;
+  font-weight: 700;
+  text-align: center;
+  font-family: "Consolas", "Courier New", monospace;
+  color: #005a9c;
+  margin: 8px 0;
+}
+
+.status-badge {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 12px;
+  color: #2e8b46;
+}
+
+.status-badge.paused {
+  color: #b8860b;
+}

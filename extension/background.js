@@ -162,23 +162,41 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true; // respuesta asíncrona
 });
 
+function showHourlyNotification(session) {
+  chrome.notifications.create(HOURLY_NOTIFICATION, {
+    type: "basic",
+    iconUrl: "icons/icon128.png",
+    title: `¿Sigues trabajando en ${session.ticketCode}?`,
+    message: session.ticketDesc
+      ? `Llevas ${Math.round(computeElapsedMs(session) / HOUR_MS)} hora(s) en: ${session.ticketDesc}`
+      : "Llevas una hora registrada en este ticket.",
+    priority: 2,
+    requireInteraction: true,
+    buttons: [{ title: "Sí, continuar" }, { title: "No, cambiar de ticket" }],
+  });
+}
+
+// Ayuda para probar la notificación manualmente desde la consola del
+// service worker (chrome://extensions > "service worker"), sin esperar
+// una hora ni escribir el nombre de la alarma a mano:
+//   testNotification()
+self.testNotification = async () => {
+  const session = await getActiveSession();
+  if (!session) {
+    console.warn("No hay sesión activa. Inicia un ticket desde el popup primero.");
+    return "Sin sesión activa";
+  }
+  showHourlyNotification(session);
+  return "Notificación disparada para " + session.ticketCode;
+};
+
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== HOURLY_ALARM) return;
   (async () => {
     const session = await getActiveSession();
     if (!session || session.status !== "running") return;
 
-    chrome.notifications.create(HOURLY_NOTIFICATION, {
-      type: "basic",
-      iconUrl: "icons/icon128.png",
-      title: `¿Sigues trabajando en ${session.ticketCode}?`,
-      message: session.ticketDesc
-        ? `Llevas ${Math.round(computeElapsedMs(session) / HOUR_MS)} hora(s) en: ${session.ticketDesc}`
-        : "Llevas una hora registrada en este ticket.",
-      priority: 2,
-      requireInteraction: true,
-      buttons: [{ title: "Sí, continuar" }, { title: "No, cambiar de ticket" }],
-    });
+    showHourlyNotification(session);
 
     // El aviso ya se mostró; programa el siguiente en una hora de trabajo más.
     await scheduleHourlyAlarm(session);

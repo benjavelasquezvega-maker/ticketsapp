@@ -1,8 +1,11 @@
 // Service worker: única fuente de verdad del cronómetro.
 // Vive independientemente del popup para que el tiempo no se pierda al cerrarlo.
 
-const STORAGE_KEY_ACTIVE = "activeSession";
-const STORAGE_KEY_SESSIONS = "sessions";
+const STORAGE_KEY_ACTIVE = "activeSession"; // chrome.storage.local: solo la sesión en curso en ESTE equipo.
+const SYNC_META_KEY = "sessionsMeta"; // chrome.storage.sync: historial de tickets, compartido entre equipos.
+const SYNC_CHUNK_PREFIX = "sessionsChunk_";
+const SYNC_CHUNK_MAX_BYTES = 6000; // margen bajo el límite de 8192 bytes por entrada de chrome.storage.sync.
+const LOCAL_OVERFLOW_KEY = "sessionsOverflow"; // respaldo si la cuota de sync se llena.
 const HOURLY_ALARM = "hourlyCheck";
 const HOURLY_NOTIFICATION = "hourlyCheckNotification";
 const HOUR_MS = 60 * 60 * 1000;
@@ -20,11 +23,60 @@ async function setActiveSession(session) {
   await chrome.storage.local.set({ [STORAGE_KEY_ACTIVE]: session });
 }
 
+// El historial de tickets vive en chrome.storage.sync (para verse en todos
+// los equipos donde inicies sesión de Chrome con la misma cuenta), repartido
+// en varias entradas porque sync limita cada entrada a ~8KB.
+async function getSessionChunks() {
+  const metaData = await chrome.storage.sync.get(SYNC_META_KEY);
+  const meta = metaData[SYNC_META_KEY] || { chunkCount: 0 };
+  if (meta.chunkCount === 0) return [];
+  const keys = Array.from({ length: meta.chunkCount }, (_, i) => SYNC_CHUNK_PREFIX + i);
+  const data = await chrome.storage.sync.get(keys);
+  return keys.map((k) => data[k] || []);
+}
+
+async function getSyncedSessions() {
+  const chunks = await getSessionChunks();
+  return chunks.flat();
+}
+
+async function getOverflowSessions() {
+  const data = await chrome.storage.local.get(LOCAL_OVERFLOW_KEY);
+  return data[LOCAL_OVERFLOW_KEY] || [];
+}
+
+async function getAllSessions() {
+  const [synced, overflow] = await Promise.all([getSyncedSessions(), getOverflowSessions()]);
+  return [...synced, ...overflow];
+}
+
 async function appendCompletedSession(session) {
-  const data = await chrome.storage.local.get(STORAGE_KEY_SESSIONS);
-  const sessions = data[STORAGE_KEY_SESSIONS] || [];
-  sessions.push(session);
-  await chrome.storage.local.set({ [STORAGE_KEY_SESSIONS]: sessions });
+  const chunks = await getSessionChunks();
+  if (chunks.length === 0) chunks.push([]);
+
+  const lastIndex = chunks.length - 1;
+  const candidate = [...chunks[lastIndex], session];
+  if (JSON.stringify(candidate).length > SYNC_CHUNK_MAX_BYTES) {
+    chunks.push([session]);
+  } else {
+    chunks[lastIndex] = candidate;
+  }
+
+  const toWrite = { [SYNC_META_KEY]: { chunkCount: chunks.length } };
+  chunks.forEach((chunk, i) => {
+    toWrite[SYNC_CHUNK_PREFIX + i] = chunk;
+  });
+
+  try {
+    await chrome.storage.sync.set(toWrite);
+  } catch (err) {
+    // Se llenó la cuota de sincronización (u otro error de red/cuenta):
+    // no perdemos el registro, lo guardamos localmente como respaldo.
+    console.error("No se pudo sincronizar la sesión, se guarda solo en este equipo:", err);
+    const overflow = await getOverflowSessions();
+    overflow.push(session);
+    await chrome.storage.local.set({ [LOCAL_OVERFLOW_KEY]: overflow });
+  }
 }
 
 function computeElapsedMs(session) {
@@ -118,6 +170,22 @@ async function stopSession() {
   return completed;
 }
 
+// Migración única: versiones anteriores guardaban el historial en
+// chrome.storage.local bajo la clave "sessions". Lo movemos a sync para
+// no perder tickets ya registrados antes de este cambio.
+async function migrateLegacyLocalSessions() {
+  const data = await chrome.storage.local.get("sessions");
+  const legacy = data.sessions;
+  if (!legacy || legacy.length === 0) return;
+  for (const session of legacy) {
+    await appendCompletedSession(session);
+  }
+  await chrome.storage.local.remove("sessions");
+}
+migrateLegacyLocalSessions().catch((err) =>
+  console.error("No se pudo migrar el historial anterior:", err)
+);
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   (async () => {
     try {
@@ -150,6 +218,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         case "STOP_SESSION": {
           const completed = await stopSession();
           sendResponse({ ok: true, completed });
+          break;
+        }
+        case "GET_SESSIONS": {
+          const sessions = await getAllSessions();
+          sendResponse({ ok: true, sessions });
           break;
         }
         default:
